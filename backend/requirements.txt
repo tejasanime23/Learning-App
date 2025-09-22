@@ -1,0 +1,17 @@
+# FastAPI & server
+fastapi==0.115.2
+uvicorn[standard]==0.30.6
+
+# Gemini client
+google-generativeai==0.8.5
+
+# Pinecone client (modern version)
+pinecone-client==5.0.1
+
+# Document handling
+PyPDF2==3.0.1
+python-docx==1.1.2
+
+# Utils
+tqdm==4.67.1
+python-dotenv==1.0.1
