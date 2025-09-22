@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intellio - Personalized Learning Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .bg-grid-pattern {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(15 23 42 / 0.04)'%3e%3cpath d='M0 .5H31.5V32'/%3e%3c/svg%3e");
+        }
+        .dark .bg-grid-pattern {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgb(148 163 184 / 0.05)'%3e%3cpath d='M0 .5H31.5V32'/%3e%3c/svg%3e");
+        }
+        .marquee-container {
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+        }
+        .marquee-content {
+            display: inline-block;
+            animation: marquee 20s linear infinite;
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background-color: rgba(139, 92, 246, 0.5);
+            border-radius: 3px;
+        }
+        .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+            background-color: rgba(165, 180, 252, 0.5);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .typing-indicator {
+            display: inline-block;
+            position: relative;
+            width: 80px;
+            height: 30px;
+        }
+        .typing-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            position: absolute;
+            animation: typing-animation 1.4s infinite ease-in-out;
+        }
+        .typing-dot:nth-child(1) {
+            left: 8px;
+            animation-delay: 0s;
+        }
+        .typing-dot:nth-child(2) {
+            left: 32px;
+            animation-delay: 0.2s;
+        }
+        .typing-dot:nth-child(3) {
+            left: 56px;
+            animation-delay: 0.4s;
+        }
+        @keyframes typing-animation {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // API service - Connect to your Flask backend
+        const ApiService = {
+            // Send message to backend
+            sendMessage: async (message) => {
+                try {
+                    const response = await fetch('http://localhost:5000/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('API response error');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API call failed:', error);
+                    return { 
+                        success: false, 
+                        response: "Sorry, I'm having trouble connecting to the server. Please try again later." 
+                    };
+                }
+            },
+            
+            // Get learning history
+            getLearningHistory: async () => {
+                try {
+                    const response = await fetch('http://localhost:5000/api/history');
+                    
+                    if (!response.ok) {
+                        throw new Error('API response error');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API call failed:', error);
+                    return { success: false, history: [] };
+                }
+            },
+            
+            // Get next topic suggestions
+            getNextTopics: async () => {
+                try {
+                    const response = await fetch('http://localhost:5000/api/next-topics');
+                    
+                    if (!response.ok) {
+                        throw new Error('API response error');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API call failed:', error);
+                    return { success: false, suggestions: "No suggestions available" };
+                }
+            },
+            
+            // Get revision plan
+            getRevisionPlan: async () => {
+                try {
+                    const response = await fetch('http://localhost:5000/api/revision-plan');
+                    
+                    if (!response.ok) {
+                        throw new Error('API response error');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API call failed:', error);
+                    return { success: false, plan: "Could not generate revision plan" };
+                }
+            }
+        };
+
+        const IntellioApp = () => {
+            const [darkMode, setDarkMode] = useState(true);
+            const [messages, setMessages] = useState([
+                { id: 1, text: "Hi there! I'm Intellio, your personalized learning assistant. What would you like to learn today?", sender: 'bot' }
+            ]);
+            const [inputText, setInputText] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const chatContainerRef = useRef(null);
+
+            // Marquee animation data
+            const marqueeItems = [
+                "Personalized Learning",
+                "AI-Powered",
+                "Adaptive Curriculum",
+                "Knowledge Graphs",
+                "Progress Tracking",
+                "Expert Content"
+            ];
+
+            // Toggle dark/light mode
+            const toggleDarkMode = () => {
+                setDarkMode(!darkMode);
+                document.documentElement.classList.toggle('dark');
+            };
+
+            // Handle sending messages
+            const handleSendMessage = async () => {
+                if (inputText.trim() === '' || isLoading) return;
+                
+                // Add user message
+                const userMessage = { id: Date.now(), text: inputText, sender: 'user' };
+                setMessages(prev => [...prev, userMessage]);
+                setInputText('');
+                setIsLoading(true);
+                
+                try {
+                    // Send message to backend API
+                    const response = await ApiService.sendMessage(inputText);
+                    
+                    if (response.success) {
+                        // Add bot response
+                        const botMessage = { 
+                            id: Date.now() + 1, 
+                            text: response.response, 
+                            sender: 'bot' 
+                        };
+                        setMessages(prev => [...prev, botMessage]);
+                    } else {
+                        // Handle API error
+                        const errorMessage = { 
+                            id: Date.now() + 1, 
+                            text: response.response || "Sorry, I'm having trouble connecting right now.", 
+                            sender: 'bot' 
+                        };
+                        setMessages(prev => [...prev, errorMessage]);
+                    }
+                } catch (error) {
+                    // Handle network error
+                    const errorMessage = { 
+                        id: Date.now() + 1, 
+                        text: "Network error. Please check your connection and try again.", 
+                        sender: 'bot' 
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            // Handle special commands
+            const handleSpecialCommand = async (command) => {
+                setIsLoading(true);
+                
+                try {
+                    let response;
+                    let messageText;
+                    
+                    switch(command) {
+                        case 'next topic':
+                            response = await ApiService.getNextTopics();
+                            messageText = response.success ? `🔮 Suggested Next Topics: ${response.suggestions}` : "Could not get suggestions";
+                            break;
+                        case 'revision':
+                            response = await ApiService.getRevisionPlan();
+                            messageText = response.success ? `📅 Revision Plan: ${response.plan}` : "Could not generate revision plan";
+                            break;
+                        case 'progress':
+                            response = await ApiService.getLearningHistory();
+                            if (response.success) {
+                                messageText = "📊 Progress Summary:\n";
+                                for (const [topic, stats] of Object.entries(response.summary || {})) {
+                                    messageText += `${topic}: mastered: ${stats.mastered}, attempted: ${stats.attempted}, unattempted: ${stats.unattempted}\n`;
+                                }
+                            } else {
+                                messageText = "Could not load progress";
+                            }
+                            break;
+                        default:
+                            messageText = "Unknown command";
+                    }
+                    
+                    const botMessage = { 
+                        id: Date.now() + 1, 
+                        text: messageText, 
+                        sender: 'bot' 
+                    };
+                    setMessages(prev => [...prev, botMessage]);
+                } catch (error) {
+                    const errorMessage = { 
+                        id: Date.now() + 1, 
+                        text: "Error processing command. Please try again.", 
+                        sender: 'bot' 
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            // Handle Enter key press
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter' && !isLoading) {
+                    const text = inputText.toLowerCase().trim();
+                    if (text === 'next topic' || text === 'revision' || text === 'progress') {
+                        handleSpecialCommand(text);
+                        setInputText('');
+                    } else {
+                        handleSendMessage();
+                    }
+                }
+            };
+
+            // Scroll to bottom when new messages are added
+            useEffect(() => {
+                if (chatContainerRef.current) {
+                    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                }
+            }, [messages]);
+
+            // Set initial dark mode
+            useEffect(() => {
+                if (darkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }, []);
+
+            return (
+                <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                    {/* Hero Section */}
+                    <div className={`relative py-20 px-4 ${darkMode ? 'bg-gray-900' : 'bg-white'} overflow-hidden`}>
+                        {/* Grid background */}
+                        <div className="absolute inset-0 bg-grid-pattern opacity-50"></div>
+                        
+                        {/* Branding */}
+                        <div className="container mx-auto relative z-10">
+                            <div className="flex justify-between items-start mb-16">
+                                <div className="flex items-center">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 ${darkMode ? 'bg-purple-600' : 'bg-purple-500'}`}>
+                                        <i className="fas fa-brain text-white text-lg"></i>
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-bold">Intellio</h1>
+                                        <p className="text-sm opacity-70">Unlock your genius</p>
+                                    </div>
+                                </div>
+                                
+                                {/* Dark/Light Mode Toggle */}
+                                <button 
+                                    onClick={toggleDarkMode}
+                                    className={`p-2 rounded-full transition-all duration-300 ${darkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300'}`}
+                                    aria-label="Toggle dark mode"
+                                >
+                                    {darkMode ? (
+                                        <i className="fas fa-sun text-yellow-400"></i>
+                                    ) : (
+                                        <i className="fas fa-moon text-indigo-700"></i>
+                                    )}
+                                </button>
+                            </div>
+                            
+                            {/* Centered Quote */}
+                            <div className="text-center max-w-3xl mx-auto mt-10">
+                                <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500">
+                                    Education tailored to your mind
+                                </h2>
+                                <p className="text-xl opacity-80">
+                                    Discover a learning journey adapted to your unique strengths, interests, and goals
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Marquee Animation */}
+                        <div className="marquee-container mt-16">
+                            <div className="marquee-content">
+                                {marqueeItems.concat(marqueeItems).map((item, index) => (
+                                    <span key={index} className="mx-8 text-lg font-medium text-purple-500 dark:text-purple-400">
+                                        {item} <i className="fas fa-star text-yellow-500 mx-2"></i>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Chat Interface */}
+                    <div className={`container mx-auto px-4 pb-20 max-w-4xl ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-2xl overflow-hidden`}>
+                        <div className="p-2 text-center text-sm text-gray-500 dark:text-gray-400">
+                            Try commands: "next topic", "revision", or "progress"
+                        </div>
+                        <div 
+                            ref={chatContainerRef}
+                            className="h-96 overflow-y-auto p-4 space-y-4 scrollbar-thin"
+                        >
+                            {messages.map((message) => (
+                                <div
+                                    key={message.id}
+                                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div
+                                        className={`max-w-xs md:max-w-md rounded-2xl p-4 transition-all duration-300 ${message.sender === 'user' 
+                                            ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-900') 
+                                            : (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800')
+                                        } ${message.sender === 'user' ? 'rounded-br-none' : 'rounded-bl-none'}`}
+                                    >
+                                        {message.text}
+                                    </div>
+                                </div>
+                            ))}
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className={`max-w-xs md:max-w-md rounded-2xl p-4 ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-800'} rounded-bl-none`}>
+                                        <div className="typing-indicator">
+                                            <div className="typing-dot"></div>
+                                            <div className="typing-dot"></div>
+                                            <div className="typing-dot"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Input Area */}
+                        <div className="flex items-center p-4 border-t border-gray-700">
+                            <input
+                                type="text"
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                                placeholder="Type your message here..."
+                                disabled={isLoading}
+                                className={`flex-1 py-3 px-4 rounded-full focus:outline-none focus:ring-2 ${darkMode 
+                                    ? 'bg-gray-800 text-white focus:ring-purple-500' 
+                                    : 'bg-gray-200 text-gray-900 focus:ring-blue-500'} ${isLoading ? 'opacity-50' : ''}`}
+                            />
+                            <button
+                                onClick={handleSendMessage}
+                                disabled={!inputText.trim() || isLoading}
+                                className={`ml-2 p-3 rounded-full transition-all duration-300 ${darkMode 
+                                    ? 'bg-transparent border border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white' 
+                                    : 'bg-transparent border border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white'} 
+                                    ${(!inputText.trim() || isLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<IntellioApp />);
+    </script>
+</body>
+</html>
