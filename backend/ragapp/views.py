@@ -183,3 +183,38 @@ def generate_questions(request):
         temperature=0.6,
     )
     return JsonResponse({"questions": questions})
+
+@csrf_exempt
+def generate_flashcards(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        topic = data.get("topic", "")
+
+        if not topic:
+            return JsonResponse({"error": "No topic provided"}, status=400)
+
+        # Call Gemini model
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = f"Generate 5 flashcards for the topic '{topic}'. \
+Each flashcard should be JSON with 'question' and 'answer'. Return a JSON array."
+
+        response = model.generate_content(prompt)
+
+        # Parse Gemini response
+        try:
+            flashcards = json.loads(response.text)
+        except Exception:
+            flashcards = [{"question": "Could not parse AI output", "answer": response.text}]
+
+        # Make sure it's always a list
+        if not isinstance(flashcards, list):
+            flashcards = [flashcards]
+
+        return JsonResponse({"flashcards": flashcards})
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+

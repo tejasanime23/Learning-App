@@ -1,0 +1,24 @@
+.dashboard-container {
+  text-align: center;
+  padding: 2rem;
+}
+
+.dashboard-actions {
+  margin-top: 2rem;
+}
+
+.dashboard-actions button {
+  margin: 1rem;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #2575fc;
+  color: white;
+  transition: 0.3s ease;
+}
+
+.dashboard-actions button:hover {
+  background: #6a11cb;
+}
